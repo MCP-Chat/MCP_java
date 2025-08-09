@@ -27,6 +27,7 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.24.12')
     implementation 'software.amazon.awssdk:bedrockruntime'
     implementation 'software.amazon.awssdk:bedrock'
+    implementation 'software.amazon.awssdk:sts'
     
     // Lombok
     compileOnly 'org.projectlombok:lombok'

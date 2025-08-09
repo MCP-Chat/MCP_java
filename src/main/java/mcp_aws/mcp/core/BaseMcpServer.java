@@ -8,13 +8,14 @@ import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelRequest;
 import software.amazon.awssdk.services.bedrockruntime.model.InvokeModelResponse;
 
 import java.util.Map;
+import java.util.List;
 
 @Slf4j
 public abstract class BaseMcpServer implements McpTool {
     
     protected final BedrockRuntimeClient bedrockRuntimeClient;
     protected final ObjectMapper objectMapper;
-    protected static final String MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
+    protected static final String MODEL_ID = "apac.anthropic.claude-3-5-sonnet-20241022-v2:0";
 
     protected BaseMcpServer(BedrockRuntimeClient bedrockRuntimeClient, ObjectMapper objectMapper) {
         this.bedrockRuntimeClient = bedrockRuntimeClient;
@@ -28,13 +29,18 @@ public abstract class BaseMcpServer implements McpTool {
         try {
             Map<String, Object> request = Map.of(
                 "anthropic_version", "bedrock-2023-05-31",
-                "max_tokens", 2048,
-                "messages", new Object[]{
+                "max_tokens", 4096,
+                "messages", List.of(
                     Map.of(
                         "role", "user",
-                        "content", prompt
+                        "content", List.of(
+                            Map.of(
+                                "type", "text",
+                                "text", prompt
+                            )
+                        )
                     )
-                },
+                ),
                 "system", systemMessage
             );
 
@@ -46,7 +52,25 @@ public abstract class BaseMcpServer implements McpTool {
             InvokeModelResponse response = bedrockRuntimeClient.invokeModel(invokeRequest);
             Map<String, Object> responseBody = objectMapper.readValue(response.body().asUtf8String(), Map.class);
 
-            return ((Map<String, String>) ((Map<String, Object>) responseBody.get("content")).get("text")).get("value");
+            Object contentObj = responseBody.get("content");
+            if (!(contentObj instanceof List)) {
+                throw new IllegalStateException("Unexpected response format: content is not a list");
+            }
+            List<?> contentList = (List<?>) contentObj;
+            for (Object item : contentList) {
+                if (item instanceof Map) {
+                    Map<?, ?> itemMap = (Map<?, ?>) item;
+                    Object type = itemMap.get("type");
+                    if ("text".equals(type)) {
+                        Object text = itemMap.get("text");
+                        if (text instanceof String) {
+                            return (String) text;
+                        }
+                    }
+                }
+            }
+
+            throw new IllegalStateException("No text content found in model response");
 
         } catch (Exception e) {
             log.error("Error invoking Bedrock model", e);

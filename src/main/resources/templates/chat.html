@@ -2,187 +2,160 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>AWS Documentation Chat</title>
+    <title>AWS Assistant</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .chat-container {
-            height: calc(100vh - 200px);
-            overflow-y: auto;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .message {
-            margin: 15px;
-            padding: 15px;
-            border-radius: 10px;
-            max-width: 80%;
-        }
-        .user-message {
-            background-color: #e3f2fd;
-            margin-left: auto;
-            color: #1a237e;
-        }
-        .ai-message {
-            background-color: #f5f5f5;
-            margin-right: auto;
-            color: #212121;
-        }
-        .typing-indicator {
-            display: none;
-            margin: 15px;
-            padding: 10px;
-            color: #666;
-            font-style: italic;
-        }
-        .message a {
-            color: #1976d2;
-            text-decoration: none;
-        }
-        .message a:hover {
-            text-decoration: underline;
-        }
-        .doc-reference {
-            border-left: 3px solid #2196f3;
-            padding-left: 10px;
-            margin: 10px 0;
-            background-color: #f8f9fa;
-        }
-        pre {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            overflow-x: auto;
-        }
-        code {
-            font-family: 'Courier New', Courier, monospace;
-            padding: 2px 4px;
-            background-color: #f8f9fa;
-            border-radius: 3px;
-        }
-        .header {
-            background: linear-gradient(135deg, #1976d2, #2196f3);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .input-container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
-        }
+        body { background-color: #f8f9fa; }
+        .chat-container { height: calc(100vh - 280px); overflow-y: auto; background-color: white; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .message { margin: 15px; padding: 15px; border-radius: 10px; max-width: 80%; }
+        .user-message { background-color: #e3f2fd; margin-left: auto; color: #1a237e; }
+        .ai-message { background-color: #f5f5f5; margin-right: auto; color: #212121; }
+        .typing-indicator { display: none; margin: 15px; padding: 10px; color: #666; font-style: italic; }
+        pre { background-color: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        code { font-family: 'Courier New', Courier, monospace; padding: 2px 4px; background-color: #f8f9fa; border-radius: 3px; }
+        .header { background: linear-gradient(135deg, #1976d2, #2196f3); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
+        .input-container { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 0 -2px 4px rgba(0,0,0,0.1); }
+        .role-input { max-width: 520px; }
+        .tab-pane { padding-top: 1rem; }
     </style>
 </head>
-<body class="container py-5">
+<body class="container py-4">
     <div class="header">
-        <h1 class="mb-0">AWS Documentation Chat</h1>
-        <p class="mb-0">AWS 문서 기반 대화형 도우미</p>
+        <h1 class="mb-0">AWS Assistant</h1>
+        <p class="mb-0">AWS CLI와 공식 문서를 활용하는 한국어 어시스턴트</p>
     </div>
-    
-    <div class="chat-container border rounded p-3 mb-3" id="chatContainer">
-        <!-- Messages will be added here -->
+
+    <div class="mb-3">
+        <label for="roleArnInput" class="form-label">AWS Role ARN (선택사항)</label>
+        <input type="text" id="roleArnInput" class="form-control role-input" placeholder="arn:aws:iam::123456789012:role/MyRole">
     </div>
-    
-    <div class="typing-indicator" id="typingIndicator">
-        <div class="spinner-grow spinner-grow-sm text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
+
+    <ul class="nav nav-tabs" id="chatTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="cli-tab" data-bs-toggle="tab" data-bs-target="#cli" type="button" role="tab" aria-controls="cli" aria-selected="true">💻 AWS CLI</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="doc-tab" data-bs-toggle="tab" data-bs-target="#doc" type="button" role="tab" aria-controls="doc" aria-selected="false">📚 AWS 문서</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="chatTabsContent">
+        <div class="tab-pane fade show active" id="cli" role="tabpanel" aria-labelledby="cli-tab">
+            <div class="chat-container border rounded p-3 mb-3" id="cliChatContainer"></div>
+            <div class="typing-indicator" id="cliTypingIndicator">
+                <div class="spinner-grow spinner-grow-sm text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                <span class="ms-2">응답 생성 중...</span>
+            </div>
+            <div class="input-container">
+                <form id="cliForm" class="d-flex gap-2">
+                    <input type="text" id="cliQueryInput" class="form-control" placeholder="예: S3 버킷 목록 보여줘" required>
+                    <button type="submit" class="btn btn-primary px-4">전송</button>
+                </form>
+            </div>
         </div>
-        <span class="ms-2">응답 생성 중...</span>
-    </div>
-    
-    <div class="input-container">
-        <form id="chatForm" class="d-flex gap-2">
-            <input type="text" id="queryInput" class="form-control" 
-                   placeholder="AWS에 대해 궁금한 점을 물어보세요..." 
-                   required>
-            <button type="submit" class="btn btn-primary px-4">
-                <i class="bi bi-send"></i> 전송
-            </button>
-        </form>
+        <div class="tab-pane fade" id="doc" role="tabpanel" aria-labelledby="doc-tab">
+            <div class="chat-container border rounded p-3 mb-3" id="docChatContainer"></div>
+            <div class="typing-indicator" id="docTypingIndicator">
+                <div class="spinner-grow spinner-grow-sm text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+                <span class="ms-2">응답 생성 중...</span>
+            </div>
+            <div class="input-container">
+                <form id="docForm" class="d-flex gap-2">
+                    <input type="text" id="docQueryInput" class="form-control" placeholder="예: S3 버킷 생성 방법 문서 찾아줘" required>
+                    <button type="submit" class="btn btn-primary px-4">전송</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const chatForm = document.getElementById('chatForm');
-        const queryInput = document.getElementById('queryInput');
-        const chatContainer = document.getElementById('chatContainer');
-        const typingIndicator = document.getElementById('typingIndicator');
+        const roleArnInput = document.getElementById('roleArnInput');
 
-        // Initialize markdown
+        const cliForm = document.getElementById('cliForm');
+        const cliQueryInput = document.getElementById('cliQueryInput');
+        const cliChatContainer = document.getElementById('cliChatContainer');
+        const cliTypingIndicator = document.getElementById('cliTypingIndicator');
+
+        const docForm = document.getElementById('docForm');
+        const docQueryInput = document.getElementById('docQueryInput');
+        const docChatContainer = document.getElementById('docChatContainer');
+        const docTypingIndicator = document.getElementById('docTypingIndicator');
+
         marked.setOptions({
-            highlight: function(code, lang) {
-                return hljs.highlightAuto(code).value;
-            },
+            highlight: function(code, lang) { return hljs.highlightAuto(code).value; },
             breaks: true
         });
 
-        chatForm.addEventListener('submit', async (e) => {
+        cliForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const query = queryInput.value.trim();
+            const query = cliQueryInput.value.trim();
             if (!query) return;
-
-            // Add user message
-            addMessage(query, 'user');
-            queryInput.value = '';
-            queryInput.disabled = true;
-
-            // Show typing indicator
-            typingIndicator.style.display = 'block';
-
+            addMessage(cliChatContainer, query, 'user');
+            cliQueryInput.value = '';
+            cliQueryInput.disabled = true;
+            cliTypingIndicator.style.display = 'block';
             try {
-                const response = await fetch('/query', {
+                const response = await fetch('/query/cli', {
                     method: 'POST',
-                    body: query,
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, roleArn: roleArnInput.value.trim() })
                 });
-                
-                if (!response.ok) throw new Error('Network response was not ok');
-                
+                if (!response.ok) throw new Error('Network error');
                 const answer = await response.text();
-                addMessage(answer, 'ai');
-            } catch (error) {
-                console.error('Error:', error);
-                addMessage('죄송합니다. 오류가 발생했습니다.', 'ai');
+                addMessage(cliChatContainer, answer, 'ai');
+            } catch (err) {
+                console.error(err);
+                addMessage(cliChatContainer, '죄송합니다. 오류가 발생했습니다.', 'ai');
             } finally {
-                typingIndicator.style.display = 'none';
-                queryInput.disabled = false;
-                queryInput.focus();
+                cliTypingIndicator.style.display = 'none';
+                cliQueryInput.disabled = false;
+                cliQueryInput.focus();
             }
         });
 
-        function addMessage(text, type) {
+        docForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const query = docQueryInput.value.trim();
+            if (!query) return;
+            addMessage(docChatContainer, query, 'user');
+            docQueryInput.value = '';
+            docQueryInput.disabled = true;
+            docTypingIndicator.style.display = 'block';
+            try {
+                const response = await fetch('/query/doc', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                if (!response.ok) throw new Error('Network error');
+                const answer = await response.text();
+                addMessage(docChatContainer, answer, 'ai');
+            } catch (err) {
+                console.error(err);
+                addMessage(docChatContainer, '죄송합니다. 오류가 발생했습니다.', 'ai');
+            } finally {
+                docTypingIndicator.style.display = 'none';
+                docQueryInput.disabled = false;
+                docQueryInput.focus();
+            }
+        });
+
+        function addMessage(container, text, type) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}-message`;
-            
-            // Parse markdown for AI messages
-            if (type === 'ai') {
-                messageDiv.innerHTML = marked.parse(text);
-            } else {
-                messageDiv.textContent = text;
-            }
-            
-            chatContainer.appendChild(messageDiv);
-            chatContainer.scrollTop = chatContainer.scrollHeight;
-            
-            // Highlight code blocks
-            messageDiv.querySelectorAll('pre code').forEach((block) => {
-                hljs.highlightBlock(block);
-            });
+            if (type === 'ai') { messageDiv.innerHTML = marked.parse(text); }
+            else { messageDiv.textContent = text; }
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+            messageDiv.querySelectorAll('pre code').forEach((block) => { hljs.highlightBlock(block); });
         }
 
-        // Focus input on load
-        queryInput.focus();
+        // 포커스 초기화
+        cliQueryInput.focus();
     </script>
 </body>
 </html> 
