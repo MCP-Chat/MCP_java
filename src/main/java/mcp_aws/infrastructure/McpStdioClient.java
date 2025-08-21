@@ -9,7 +9,6 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
 
 @Component
 public class McpStdioClient {
@@ -51,7 +50,7 @@ public class McpStdioClient {
 		if (session == null || !session.isAlive()) {
 			throw new IllegalStateException("MCP 서버 세션이 시작되지 않았습니다.");
 		}
-		int id = session.nextId();
+		String id = session.nextId();
 		request.put("jsonrpc", "2.0");
 		request.put("id", id);
 		CompletableFuture<String> future = new CompletableFuture<>();
@@ -87,6 +86,7 @@ public class McpStdioClient {
 
 		ServerSession session = new ServerSession(process);
 		session.startReader();
+		session.startErrorLogger();
 
 		// initialize
 		Map<String, Object> init = new HashMap<>();
@@ -94,10 +94,18 @@ public class McpStdioClient {
 		Map<String, Object> params = new HashMap<>();
 		params.put("protocolVersion", "2024-11-05");
 		params.put("capabilities", Map.of());
+		params.put("clientInfo", Map.of("name", "mcp-java", "version", "0.1.0"));
 		init.put("params", params);
 		try {
 			String resp = sendRequestInternal(session, init, defaultValue(properties.getStartTimeoutMs(), 15000));
-			// Optionally inspect response
+			// send initialized notification (no id)
+			Map<String, Object> initialized = new HashMap<>();
+			initialized.put("jsonrpc", "2.0");
+			initialized.put("method", "initialized");
+			initialized.put("params", Map.of());
+			writeFramed(session, toJson(initialized));
+			// small delay to allow server to finish setup
+			try { Thread.sleep(200); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
 		} catch (IOException e) {
 			stopSession(session);
 			throw e;
@@ -111,7 +119,7 @@ public class McpStdioClient {
 	}
 
 	private String sendRequestInternal(ServerSession session, Map<String, Object> request, long timeoutMs) throws IOException {
-		int id = session.nextId();
+		String id = session.nextId();
 		request.put("jsonrpc", "2.0");
 		request.put("id", id);
 		CompletableFuture<String> future = new CompletableFuture<>();
@@ -132,7 +140,8 @@ public class McpStdioClient {
 
 	private void writeFramed(ServerSession session, String json) throws IOException {
 		byte[] payload = json.getBytes(StandardCharsets.UTF_8);
-		String headers = "Content-Length: " + payload.length + "\r\n\r\n";
+		String headers = "Content-Length: " + payload.length + "\r\n" +
+				"Content-Type: application/json; charset=utf-8\r\n\r\n";
 		synchronized (session.writeLock) {
 			session.out.write(headers.getBytes(StandardCharsets.UTF_8));
 			session.out.write(payload);
@@ -153,21 +162,24 @@ public class McpStdioClient {
 	private final class ServerSession {
 		private final Process process;
 		private final InputStream in;
+		private final InputStream err;
 		private final OutputStream out;
-		private final ConcurrentHashMap<Integer, CompletableFuture<String>> pending = new ConcurrentHashMap<>();
-		private final AtomicIntegerCounter idGen = new AtomicIntegerCounter();
+		private final ConcurrentHashMap<String, CompletableFuture<String>> pending = new ConcurrentHashMap<>();
+		private final java.util.concurrent.atomic.AtomicInteger idGen = new java.util.concurrent.atomic.AtomicInteger(0);
 		private volatile boolean running = true;
 		private Thread reader;
+		private Thread errReader;
 		private final Object writeLock = new Object();
 
 		ServerSession(Process process) {
 			this.process = process;
 			this.in = process.getInputStream();
+			this.err = process.getErrorStream();
 			this.out = process.getOutputStream();
 		}
 
 		boolean isAlive() { return process.isAlive() && running; }
-		int nextId() { return idGen.incrementAndGet(); }
+		String nextId() { return String.valueOf(idGen.incrementAndGet()); }
 
 		void startReader() {
 			reader = new Thread(() -> {
@@ -180,8 +192,9 @@ public class McpStdioClient {
 						try {
 							JsonNode node = objectMapper.readTree(json);
 							JsonNode idNode = node.get("id");
-							if (idNode != null && idNode.isInt()) {
-								CompletableFuture<String> fut = pending.remove(idNode.intValue());
+							if (idNode != null) {
+								String key = idNode.isInt() ? String.valueOf(idNode.intValue()) : idNode.asText();
+								CompletableFuture<String> fut = pending.remove(key);
 								if (fut != null) fut.complete(json);
 							}
 						} catch (Exception ignore) {}
@@ -197,8 +210,20 @@ public class McpStdioClient {
 			reader.start();
 		}
 
+		void startErrorLogger() {
+			errReader = new Thread(() -> {
+				try (BufferedReader br = new BufferedReader(new InputStreamReader(err, StandardCharsets.UTF_8))) {
+					String line;
+					while ((line = br.readLine()) != null) {
+						System.err.println("[MCP-STDERR] " + line);
+					}
+				} catch (IOException ignore) {}
+			}, "mcp-stdio-stderr");
+			errReader.setDaemon(true);
+			errReader.start();
+		}
+
 		int readContentLength(BufferedInputStream bis) throws IOException {
-			// Read headers until blank line; parse Content-Length
 			int contentLength = -1;
 			String line;
 			while (!(line = readLine(bis)).isEmpty()) {
@@ -213,20 +238,11 @@ public class McpStdioClient {
 
 		String readLine(BufferedInputStream bis) throws IOException {
 			ByteArrayOutputStream baos = new ByteArrayOutputStream();
-			int prev = -1;
 			while (true) {
 				int b = bis.read();
 				if (b == -1) return baos.toString(StandardCharsets.UTF_8);
-				if (b == '\n') {
-					// handle CRLF or LF
-					break;
-				}
-				if (b == '\r') {
-					// expect \n next; ignore here
-				} else {
-					baos.write(b);
-				}
-				prev = b;
+				if (b == '\n') break;
+				if (b == '\r') { /* ignore */ } else { baos.write(b); }
 			}
 			return baos.toString(StandardCharsets.UTF_8);
 		}
@@ -238,10 +254,5 @@ public class McpStdioClient {
 			try { process.waitFor(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
 			if (process.isAlive()) process.destroyForcibly();
 		}
-	}
-
-	private static final class AtomicIntegerCounter {
-		private final java.util.concurrent.atomic.AtomicInteger ai = new java.util.concurrent.atomic.AtomicInteger(0);
-		int incrementAndGet() { return ai.incrementAndGet(); }
 	}
 } 

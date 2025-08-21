@@ -20,6 +20,7 @@ public class McpToolInvoker {
 		if (documentation) stdio.ensureDocumentationStarted(extraEnv); else stdio.ensureAwsApiStarted(extraEnv);
 		Map<String, Object> req = new HashMap<>();
 		req.put("method", "tools/list");
+		req.put("params", Map.of());
 		return stdio.sendRequest(documentation, req, 5000);
 	}
 
