@@ -99,7 +99,7 @@
             cliQueryInput.disabled = true;
             cliTypingIndicator.style.display = 'block';
             try {
-                const response = await fetch('/query/cli', {
+                const response = await fetch('/api/cli/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query, roleArn: roleArnInput.value.trim() })
@@ -126,7 +126,7 @@
             docQueryInput.disabled = true;
             docTypingIndicator.style.display = 'block';
             try {
-                const response = await fetch('/query/doc', {
+                const response = await fetch('/api/doc/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ query })
