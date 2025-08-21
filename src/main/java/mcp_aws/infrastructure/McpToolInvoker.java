@@ -1,13 +1,16 @@
 package mcp_aws.infrastructure;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Map;
 
 @Component
 public class McpToolInvoker {
 	private final McpStdioClient stdioClient;
+	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	public McpToolInvoker(McpStdioClient stdioClient) {
 		this.stdioClient = stdioClient;
@@ -16,9 +19,11 @@ public class McpToolInvoker {
 	public String getTools(boolean documentation, Map<String, String> extraEnv) throws IOException {
 		var process = documentation ? stdioClient.startDocumentationServer(extraEnv) : stdioClient.startAwsApiServer(extraEnv);
 		try {
-			// TODO: JSON-RPC 요청 구성 (MCP get_tools)
-			String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}";
-			return stdioClient.sendJsonRpc(process, request, 5000);
+			Map<String, Object> req = new HashMap<>();
+			req.put("jsonrpc", "2.0");
+			req.put("id", 1);
+			req.put("method", "tools/list");
+			return stdioClient.sendJsonRpc(process, objectMapper.writeValueAsString(req), 5000);
 		} finally {
 			stdioClient.stopServer(process);
 		}
@@ -27,9 +32,15 @@ public class McpToolInvoker {
 	public String callTool(boolean documentation, String toolName, Map<String, Object> args, Map<String, String> extraEnv) throws IOException {
 		var process = documentation ? stdioClient.startDocumentationServer(extraEnv) : stdioClient.startAwsApiServer(extraEnv);
 		try {
-			// TODO: JSON-RPC 요청 구성 (MCP tools/call)
-			String request = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"" + toolName + "\"}}";
-			return stdioClient.sendJsonRpc(process, request, 30000);
+			Map<String, Object> params = new HashMap<>();
+			params.put("name", toolName);
+			if (args != null) params.put("arguments", args);
+			Map<String, Object> req = new HashMap<>();
+			req.put("jsonrpc", "2.0");
+			req.put("id", 1);
+			req.put("method", "tools/call");
+			req.put("params", params);
+			return stdioClient.sendJsonRpc(process, objectMapper.writeValueAsString(req), 30000);
 		} finally {
 			stdioClient.stopServer(process);
 		}
